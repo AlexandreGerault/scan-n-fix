@@ -1,48 +1,170 @@
-import {invoke} from '@tauri-apps/api/core';
-import {useState} from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useReducer } from "react";
+import { info } from "@tauri-apps/plugin-log";
 
-export function PickFolderScreen() {
-    const [path, setPath] = useState<undefined | string>()
-    const [scanResult, setScanResult] = useState<undefined | string[]>()
-    const [error, setError] = useState<undefined | string>()
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-    const open = async () => {
-        const p = await invoke('select_directory_desktop')
-
-        return setPath(p as string)
+type State =
+  | {
+      error: undefined | string;
+      path: string;
+      scanResult: undefined | string[];
+      status: "picked";
+    }
+  | {
+      error: undefined;
+      path: string;
+      scanResult: string[];
+      status: "succeed";
+    }
+  | {
+      error: undefined;
+      path: undefined;
+      scanResult: undefined;
+      status: "pending";
+    }
+  | {
+      error: string;
+      path: string;
+      scanResult: undefined;
+      status: "failed";
+    }
+  | {
+      error: undefined | string;
+      path: string;
+      scanResult: undefined | string[];
+      status: "loading";
     };
 
-    const cancel = () => {
-        setPath(undefined)
-        setScanResult(undefined)
-        setError(undefined)
+type Action =
+  | {
+      type: "cancel";
     }
-
-    const scan = async () => {
-        try {
-            const r = await invoke('scan_selected_directory', {path})
-
-            return setScanResult(r as string[])
-        } catch (error) {
-            // @ts-ignore
-            setError("ERROR: " + error)
-        }
+  | {
+      type: "loading";
     }
+  | {
+      type: "select_folder";
+      payload: string;
+    }
+  | {
+      type: "scan_succeed";
+      payload: string[];
+    }
+  | {
+      type: "scan_failed";
+      payload: string;
+    };
 
-    return <div className="screen">
-        <h1>Choisir un dossier à scanner</h1>
+const initialState = {
+  path: undefined,
+  scanResult: undefined,
+  error: undefined,
+  status: "pending",
+} satisfies State;
 
-        <div className="button-group">
-            <button onClick={open}>Choisir un dossier</button>
-            <button onClick={cancel}>Annuler</button>
+function scanReducer(state: State, action: Action): State {
+  if (action.type === "cancel") {
+    return { ...initialState };
+  }
+
+  if (action.type === "loading") {
+    return { ...state, path: state.path as string, status: "loading" };
+  }
+
+  if (action.type === "select_folder") {
+    return {
+      path: action.payload,
+      scanResult: undefined,
+      error: undefined,
+      status: "picked",
+    };
+  }
+
+  if (action.type === "scan_succeed") {
+    return {
+      path: state.path as string,
+      scanResult: action.payload,
+      error: undefined,
+      status: "succeed",
+    };
+  }
+
+  return {
+    path: state.path as string,
+    scanResult: undefined,
+    error: action.payload,
+    status: "failed",
+  };
+}
+
+export function PickFolderScreen() {
+  const [{ path, scanResult, error, status }, dispatch] = useReducer(
+    scanReducer,
+    { ...initialState },
+  );
+
+  const open = async () => {
+    const p = await invoke("select_directory_desktop");
+
+    return dispatch({ type: "select_folder", payload: p as string });
+  };
+
+  const cancel = () => {
+    dispatch({ type: "cancel" });
+  };
+
+  const scan = async () => {
+    try {
+      const rPromise = invoke("scan_selected_directory", { path });
+
+      dispatch({ type: "loading" });
+
+      await delay(2000);
+
+      const r = await rPromise;
+
+      return dispatch({ type: "scan_succeed", payload: r as string[] });
+    } catch (error) {
+      // @ts-ignore
+      return dispatch({ type: "scan_failed", payload: error as string });
+    }
+  };
+
+  return (
+    <div className="screen">
+      <h1>Choisir un dossier à scanner</h1>
+
+      <div className="button-group">
+        <button onClick={open}>Choisir un dossier</button>
+        <button onClick={cancel}>Annuler</button>
+      </div>
+
+      {path && <p>Dossier sélectionné : {path}</p>}
+
+      {path && <button onClick={scan}>Scanner</button>}
+
+      {status === "loading" && (
+        <div style={{ marginTop: "24px", marginBottom: "24px" }}>
+          <span className="loader"></span>
         </div>
+      )}
 
-        {path && <p>Dossier sélectionné : {path}</p>}
+      {status === "failed" && <p className="error">{error}</p>}
 
-        {path && <button onClick={scan}>Scanner</button>}
+      {status === "succeed" && scanResult.length > 0 && (
+        <ul>
+          {scanResult.map((file) => (
+            <li key={file}>{file}</li>
+          ))}
+        </ul>
+      )}
 
-        {error && <p className="error">{error}</p>}
-
-        {scanResult && <ul>{scanResult.map(file => <li key={file}>{file}</li>)}</ul>}
+      {status === "succeed" && scanResult.length === 0 && (
+        <p>Aucun fichier corrompu trouvé</p>
+      )}
     </div>
+  );
 }

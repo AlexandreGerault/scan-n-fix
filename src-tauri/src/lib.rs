@@ -5,7 +5,7 @@ use walkdir::DirEntry;
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 fn is_invalid_utf8(os_str: &std::ffi::OsStr) -> bool {
-    os_str.to_str().is_none()  // If it's None, it's not valid UTF-8
+    os_str.to_str().is_none() // If it's None, it's not valid UTF-8
 }
 
 #[tauri::command]
@@ -26,9 +26,9 @@ fn scan_selected_directory(path: String) -> Result<Vec<String>, InvokeError> {
 
     let invalid_paths: Vec<String> = walk_dir
         .into_iter()
-        .filter_map(|entry| entry.ok())  // Ignore unreadable files
+        .filter_map(|entry| entry.ok()) // Ignore unreadable files
         .filter(|entry| is_invalid_utf8(entry.path().as_os_str()))
-        .map(|entry| entry.path().display().to_string())  // Convert only valid paths back to String
+        .map(|entry| entry.path().display().to_string()) // Convert only valid paths back to String
         .collect();
 
     Ok(invalid_paths)
@@ -39,7 +39,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![select_directory_desktop, scan_selected_directory])
+        .invoke_handler(tauri::generate_handler![
+            select_directory_desktop,
+            scan_selected_directory
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
